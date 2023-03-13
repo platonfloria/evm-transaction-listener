@@ -1,6 +1,6 @@
-use std::{env, time::SystemTime, collections::HashSet, sync::Arc, str::FromStr};
+use std::{env, time::{Duration, SystemTime}, thread, collections::HashSet, sync::Arc, str::FromStr};
 
-use eyre::{eyre, Result};
+use eyre::{bail, eyre, Result};
 use chrono::{DateTime, Utc};
 use tokio::sync::{mpsc::{self, UnboundedSender, UnboundedReceiver}, Mutex};
 use web3::{
@@ -102,12 +102,7 @@ impl Controller {
 }
 
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    dotenv::dotenv().ok();
-
-    let _ = env_logger::try_init();
-
+async fn start() -> Result<()> {
     let websocket = WebSocket::new(&env::var("RPC_WS_URL").expect("RPC_WS_URL env variable not set")).await?;
     let web3 = Web3::new(websocket.clone());
     let web3_batch = Web3::new(Batch::new(websocket));
@@ -121,6 +116,28 @@ async fn main() -> Result<()> {
         controller.clone().process_new_blocks(block_receiver),
         controller.clone().sync_watched_addresses(),
     ) {
-        _ => Ok(())
+        (Ok(_), Ok(_), Ok(_)) => Ok(()),
+        _ => bail!("service has crashed"),
     }
+}
+
+
+#[tokio::main]
+async fn main() -> Result<()> {
+    dotenv::dotenv().ok();
+    let _ = env_logger::try_init();
+
+    loop {
+        match start().await {
+            Ok(_) => break,
+            Err(e) => {
+                println!("Error: {:?}", e);
+                println!("Restarting in 5 seconds...");
+                let ten_millis = Duration::from_secs(5);
+                thread::sleep(ten_millis);
+            }
+        }
+    }
+
+    Ok(())
 }
