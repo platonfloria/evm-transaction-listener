@@ -1,0 +1,9 @@
+
+version: '3'
+
+services:
+  app:
+    build: .
+    command: app
+    environment:
+      - RPC_WS_URL=wss://mainnet.infura.io/ws/v3/<infura_api_key>
